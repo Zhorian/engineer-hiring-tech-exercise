@@ -2,7 +2,19 @@
 
 """Main entry point for the application."""
 
-from my_module import hello
+import argparse
+from .url_validator import validate_url
 
 if __name__ == "__main__":
-    print(hello())
+    parser = argparse.ArgumentParser(description="A basic Python app")
+    parser.add_argument("-u", "--url", help="The URL to process")
+    args = parser.parse_args()
+
+    if not args.url:
+        print("No URL provided!")
+        exit(1)
+
+    if validate_url(args.url):
+        print(f"Valid URL: {args.url}")
+    else:
+        print(f"Invalid URL: {args.url}")
