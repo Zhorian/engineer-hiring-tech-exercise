@@ -21,7 +21,6 @@ def test_run(capsys):
             captured = capsys.readouterr()
             assert "Running crawler..." in captured.out
 
-
 def test_run_disallowed_all(capsys):
     with patch('src.crawler.get_all_user_agent_blocks') as mock_blocks:
         mock_blocks.return_value = ['/']

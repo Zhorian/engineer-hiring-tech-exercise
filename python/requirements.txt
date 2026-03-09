@@ -2,3 +2,4 @@
 # Add your packages here, e.g.:
 pytest==9.0.2
 requests==2.25.1
+beautifulsoup4==4.9.3
