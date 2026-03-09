@@ -21,7 +21,7 @@ def test_extract_links_with_multiple_links():
     assert len(links) == 2
     assert '#' not in links
     assert 'https://example.com' in links
-    assert 'https://another-example.com' in links
+    assert links.count('https://another-example.com') == 1
 
 
 def test_extract_links_with_no_links():

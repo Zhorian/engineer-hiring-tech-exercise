@@ -12,7 +12,7 @@ def extract_links(html_content):
         soup = BeautifulSoup(html_content, 'html.parser')
         for link in soup.find_all('a', href=True):
             href = link.get('href')
-            if href and href not in IGNORABLE_LINKS:
+            if href and href not in links and href != "/" and href.startswith("#") != True:
                 links.append(href)
     except Exception as e:
         print(f"Error parsing HTML: {e}")
