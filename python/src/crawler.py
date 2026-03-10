@@ -1,10 +1,13 @@
 import requests
-import page_record
 import json
-from html_utils import extract_links
 from urllib.parse import urlparse, urljoin
 from datetime import datetime
-from url_validator import is_crawlable, normalize_url
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from . import page_record
+from .html_utils import extract_links
+from .url_validator import is_crawlable, normalize_url
 
 class Crawler:
     def __init__(self, max_workers=10):
@@ -46,72 +49,99 @@ class Crawler:
                 f"https://{self._root_path}/",
             ]
 
-    def get_urls(self, url):
+    def _crawl_url(self, url):
+        """Crawl a single URL and return found links"""
         url = normalize_url(url)
-        url = url if url.endswith("/") else f"{url}/"
+        if not url.endswith("/"):
+            url += "/"
 
-        if not is_crawlable(url, self._root_path, self._disallowed_paths):
+        if url in self._scanned_urls or not is_crawlable(url, self._root_path, self._disallowed_paths):
             self._skipped_urls.add(url)
-            return
-        
-        if(url in self._scanned_urls):
-            # print(f"SCANNED: Already scanned url '{url}, I'm not doing it again")
-            return
-        
+            return []
+
         print(f"Scanning {url}")
+        self._scanned_urls.add(url)
         record = page_record.PageRecord()
         record.page = url
-        
         found_urls = []
 
-        response = requests.get(url)
-        if response.status_code == 200:
-            body = response.text
-            found_urls = extract_links(body)
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                body = response.text
+                found_urls = extract_links(body)
+        except Exception as e:
+            print(f"Failed to fetch {url}: {e}")
+            self._skipped_urls.add(url)
+            return []
 
-        print(f"Found {len(found_urls)} URLs on the page {url}.")
+        # Normalize relative URLs
+        normalized_urls = []
+        for u in found_urls:
+            if u.startswith("/"):
+                u = f"http://{self._root_path}{u}"
+            normalized_urls.append(u)
 
-        for i in range(0, len(found_urls)):
-            if(found_urls[i][0] == "/"):
-                found_urls[i] = f"{self._root_path}{found_urls[i]}"
-
-            record.found_links = found_urls
-
-        if len(record.found_links) > 0:
+        record.found_links = normalized_urls
+        if normalized_urls:
             self._page_records.append(record)
-        
-        self._scanned_urls.add(url)
 
-        for found_url in found_urls:
-            self.get_urls(found_url)
+        return normalized_urls
+
+
+    def _dump_to_json(self, name, obj):
+        with open(f"{name}.json", "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False, indent=4)
 
     def run(self, url):
         print("Running crawler...")
 
         parsed = urlparse(url)
-        self._root_path = f"{parsed.netloc}"
+        self._root_path = parsed.netloc
         print(f"Using root path {self._root_path}")
 
-        # check robots.txt for disallowed paths for all agents
+        # Get robots.txt disallowed paths
         self._get_all_user_agent_blocks(url)
         if f"{self._root_path}/" in self._disallowed_paths:
             print("Crawling disallowed for all user agents; exiting.")
             return False
-    
+
+        to_crawl = deque([normalize_url(url)])
         started = datetime.now()
         print(f"Starting scanning at {started}")
-        self.get_urls(url)
+
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+            futures = {}
+
+            while to_crawl or futures:
+                # Submit new URLs to executor
+                while to_crawl and len(futures) < self._max_workers:
+                    next_url = to_crawl.popleft()
+                    future = executor.submit(self._crawl_url, next_url)
+                    futures[future] = next_url
+
+                # Process completed futures
+                done, _ = as_completed(futures), []
+                for future in done:
+                    found_urls = future.result()
+                    for u in found_urls:
+                        if u not in self._scanned_urls:
+                            to_crawl.append(u)
+                    del futures[future]
+                    break  # process one at a time to refill executor
+
         finished = datetime.now()
         print(f"Finished scanning at {finished} took {finished - started}")
 
+        # Save results
         pages_dicts = [vars(page) for page in self._page_records]
         pages_dicts.sort(key=lambda x: x["page"])
-
-        with open("data.json", "w", encoding="utf-8") as f:
-            json.dump(pages_dicts, f, ensure_ascii=False, indent=4)
+        self._dump_to_json("data", pages_dicts)
 
         skipped_list = sorted(self._skipped_urls)
-        with open("skipped.json", "w", encoding="utf-8") as f:
-            json.dump(skipped_list, f, ensure_ascii=False, indent=4)
+        self._dump_to_json("skipped", skipped_list)
+
+        scanned_list = sorted(self._scanned_urls)
+        self._dump_to_json("scanned", scanned_list)
 
         return True
