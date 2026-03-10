@@ -54,3 +54,14 @@ class TestClass:
 
         assert not is_crawlable("https://www.example.com/file.pdf?download=true", root_path, disallowed_paths)
         assert not is_crawlable("https://www.example.com/file.txt", root_path, disallowed_paths)
+
+    def test_url_zego_scooter(self):
+        root_path = "www.zego.com"
+        disallowed_paths = [
+            'http://www.zego.com/admin/','https://www.zego.com/admin/', 'http://www.zego.com/login', 'https://www.zego.com/login', 'http://www.zego.com/signup',
+            'https://www.zego.com/signup', 'http://www.zego.com/bypass-onboarding-verify-email', 'https://www.zego.com/bypass-onboarding-verify-email', 'http://www.zego.com/email-verification-confirmation',
+            'https://www.zego.com/email-verification-confirmation', 'http://www.zego.com/password-reset', 'https://www.zego.com/password-reset', 'http://www.zego.com/verify-email', 'https://www.zego.com/verify-email',
+            'http://www.zego.com/onboarding/', 'https://www.zego.com/onboarding/', 'http://www.zego.com/purchase/', 'https://www.zego.com/purchase/'
+        ]
+
+        assert is_crawlable("http://zego.com/scooter/", root_path, disallowed_paths)

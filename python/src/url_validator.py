@@ -6,6 +6,8 @@ import os
 # Allowed webpage extensions
 ALLOWED_EXTENSIONS = {"", ".html", ".htm", ".php", ".asp", ".aspx"}
 
+def _strip_www(domain: str) -> str:
+    return domain.lower()[4:] if domain.lower().startswith("www.") else domain.lower()
 
 def normalize_url(url: str) -> str:
     """Ensure URL has a scheme for parsing."""
@@ -36,7 +38,7 @@ def is_crawlable(url: str, root_path: str, disallowed_paths: list[str]) -> bool:
     parsed = urlparse(url)
 
     # Exact root domain match
-    if parsed.netloc.lower() != root_path.lower():
+    if _strip_www(parsed.netloc) != _strip_www(root_path):
         return False
 
     # Path for checks

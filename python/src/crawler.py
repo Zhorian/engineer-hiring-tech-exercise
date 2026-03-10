@@ -11,6 +11,7 @@ class Crawler:
     _disallowed_paths = []
     _scanned_urls = []
     _page_records = []
+    _skipped_urls = []
 
     def get_all_user_agent_blocks(self, url):
         """
@@ -50,6 +51,7 @@ class Crawler:
         url = url if url.endswith("/") else f"{url}/"
 
         if not is_crawlable(url, self._root_path, self._disallowed_paths):
+            self._skipped_urls.append(url)
             return
         
         if(url in self._scanned_urls):
@@ -95,7 +97,7 @@ class Crawler:
         if f"{self._root_path}/" in self._disallowed_paths:
             print("Crawling disallowed for all user agents; exiting.")
             return False
-        
+    
         started = datetime.now()
         print(f"Starting scanning at {started}")
         self.get_urls(url)
@@ -107,5 +109,9 @@ class Crawler:
 
         with open("data.json", "w", encoding="utf-8") as f:
             json.dump(pages_dicts, f, ensure_ascii=False, indent=4)
+
+        self._skipped_urls.sort()
+        with open("skipped.json", "w", encoding="utf-8") as f:
+            json.dump(self._skipped_urls, f, ensure_ascii=False, indent=4)
 
         return True
