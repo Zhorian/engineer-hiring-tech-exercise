@@ -2,56 +2,56 @@ import requests
 import page_record
 import json
 from html_utils import extract_links
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from datetime import datetime
 from url_validator import is_crawlable, normalize_url
 
 class Crawler:
-    _root_path = ""
-    _disallowed_paths = []
-    _scanned_urls = []
-    _page_records = []
-    _skipped_urls = []
+    def __init__(self, max_workers=10):
+        self._root_path = ""
+        self._disallowed_paths = []
+        self._scanned_urls = set()
+        self._page_records = []
+        self._skipped_urls = set()
+        self._max_workers = max_workers  # updated
 
-    def get_all_user_agent_blocks(self, url):
-        """
-        Get the disallowed paths for all user agents (*) from robots.txt.
-        Returns a list of disallowed paths (strings).
-        """
+    def _get_all_user_agent_blocks(self, url):
+        """Fetch disallowed paths from robots.txt for all user agents (*)"""
         self._disallowed_paths = []
         try:
-            robots_url = f"{url.rstrip('/')}/robots.txt"
+            robots_url = urljoin(url, "/robots.txt")
             response = requests.get(robots_url, timeout=10)
             if response.status_code != 200:
-                return # Empty list if no robots.txt
-            
+                return
+
             content = response.text
-            lines = content.split('\n')
+            lines = content.splitlines()
             in_all_user_agent = False
-            
+
             for line in lines:
                 line = line.strip()
-                if line.lower().startswith('user-agent:'):
-                    user_agent = line.split(':', 1)[1].strip()
-                    if user_agent == '*':
-                        in_all_user_agent = True
-                    else:
-                        in_all_user_agent = False
-                elif in_all_user_agent and line.lower().startswith('disallow:'):
-                    path = line.split(':', 1)[1].strip()
+                if line.lower().startswith("user-agent:"):
+                    user_agent = line.split(":", 1)[1].strip()
+                    in_all_user_agent = user_agent == "*"
+                elif in_all_user_agent and line.lower().startswith("disallow:"):
+                    path = line.split(":", 1)[1].strip()
                     if path:
                         self._disallowed_paths.append(f"http://{self._root_path}{path}")
                         self._disallowed_paths.append(f"https://{self._root_path}{path}")
+
         except Exception as e:
             print(f"Error fetching robots.txt: {e}")
-            self._disallowed_paths = [f"http://{self._root_path}/", f"https://{self._root_path}/"]
+            self._disallowed_paths = [
+                f"http://{self._root_path}/",
+                f"https://{self._root_path}/",
+            ]
 
     def get_urls(self, url):
         url = normalize_url(url)
         url = url if url.endswith("/") else f"{url}/"
 
         if not is_crawlable(url, self._root_path, self._disallowed_paths):
-            self._skipped_urls.append(url)
+            self._skipped_urls.add(url)
             return
         
         if(url in self._scanned_urls):
@@ -80,7 +80,7 @@ class Crawler:
         if len(record.found_links) > 0:
             self._page_records.append(record)
         
-        self._scanned_urls.append(url)
+        self._scanned_urls.add(url)
 
         for found_url in found_urls:
             self.get_urls(found_url)
@@ -93,7 +93,7 @@ class Crawler:
         print(f"Using root path {self._root_path}")
 
         # check robots.txt for disallowed paths for all agents
-        self.get_all_user_agent_blocks(url)
+        self._get_all_user_agent_blocks(url)
         if f"{self._root_path}/" in self._disallowed_paths:
             print("Crawling disallowed for all user agents; exiting.")
             return False
@@ -110,8 +110,8 @@ class Crawler:
         with open("data.json", "w", encoding="utf-8") as f:
             json.dump(pages_dicts, f, ensure_ascii=False, indent=4)
 
-        self._skipped_urls.sort()
+        skipped_list = sorted(self._skipped_urls)
         with open("skipped.json", "w", encoding="utf-8") as f:
-            json.dump(self._skipped_urls, f, ensure_ascii=False, indent=4)
+            json.dump(skipped_list, f, ensure_ascii=False, indent=4)
 
         return True
