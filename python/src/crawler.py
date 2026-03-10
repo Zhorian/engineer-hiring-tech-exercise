@@ -4,9 +4,10 @@ import json
 from html_utils import extract_links
 from urllib.parse import urlparse
 from datetime import datetime
+from url_validator import is_crawlable, normalize_url
 
 class Crawler:
-    _domain = ""
+    _root_path = ""
     _disallowed_paths = []
     _scanned_urls = []
     _page_records = []
@@ -38,24 +39,21 @@ class Crawler:
                 elif in_all_user_agent and line.lower().startswith('disallow:'):
                     path = line.split(':', 1)[1].strip()
                     if path:
-                        self._disallowed_paths.append(f"{self._domain}{path}")
+                        self._disallowed_paths.append(f"http://{self._root_path}{path}")
+                        self._disallowed_paths.append(f"https://{self._root_path}{path}")
         except Exception as e:
             print(f"Error fetching robots.txt: {e}")
-            self._disallowed_paths = [f"{self._domain}/"]
+            self._disallowed_paths = [f"http://{self._root_path}/", f"https://{self._root_path}/"]
 
     def get_urls(self, url):
+        url = normalize_url(url)
         url = url if url.endswith("/") else f"{url}/"
 
-        if not url.startswith(self._domain):
-            # print(f"DOMAIN: Url '{url}' not in domain, I will crawl no further!")
+        if not is_crawlable(url, self._root_path, self._disallowed_paths):
             return
         
         if(url in self._scanned_urls):
             # print(f"SCANNED: Already scanned url '{url}, I'm not doing it again")
-            return
-        
-        if any(url.startswith(path) for path in self._disallowed_paths):
-            # print(f"FORBIDDEN: Url {url} is disallowed, I shall not pass!")
             return
         
         print(f"Scanning {url}")
@@ -63,6 +61,7 @@ class Crawler:
         record.page = url
         
         found_urls = []
+
         response = requests.get(url)
         if response.status_code == 200:
             body = response.text
@@ -72,7 +71,7 @@ class Crawler:
 
         for i in range(0, len(found_urls)):
             if(found_urls[i][0] == "/"):
-                found_urls[i] = f"{self._domain}{found_urls[i]}"
+                found_urls[i] = f"{self._root_path}{found_urls[i]}"
 
             record.found_links = found_urls
 
@@ -88,12 +87,12 @@ class Crawler:
         print("Running crawler...")
 
         parsed = urlparse(url)
-        self._domain = f"{parsed.scheme}://{parsed.netloc}"
-        print(f"Using domain {self._domain}")
+        self._root_path = f"{parsed.netloc}"
+        print(f"Using root path {self._root_path}")
 
         # check robots.txt for disallowed paths for all agents
         self.get_all_user_agent_blocks(url)
-        if f"{self._domain}/" in self._disallowed_paths:
+        if f"{self._root_path}/" in self._disallowed_paths:
             print("Crawling disallowed for all user agents; exiting.")
             return False
         
